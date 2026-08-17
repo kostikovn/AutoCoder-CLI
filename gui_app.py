@@ -1,0 +1,166 @@
+"""
+GUI Application for AI Console Editor.
+Uses CustomTkinter for a modern look and feel.
+Implements an asynchronous chat interface with a semantic context side-panel.
+"""
+
+import os
+import sys
+import threading
+import json
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+
+# --- PATH CONFIGURATION ---
+current_dir = Path(__file__).parent.absolute()
+if str(current_dir) not in sys.path:
+    sys.path.append(str(current_dir))
+
+try:
+    import customtkinter as ctk
+except ImportError:
+    print("Error: 'customtkinter' package not found. Please install it: pip install customtkinter")
+    exit(1)
+
+from loguru import logger
+from openai import OpenAI
+from dotenv import load_dotenv
+
+from ai_client import AIClient 
+from dotenv import load_dotenv
+
+load_dotenv(current_dir / "settings.env")
+
+class ConsoleEditorGUI(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        # --- Configuration ---
+        self.title("AI Console Editor - Semantic GUI")
+        self.geometry("1200x800")
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+
+        # Initialize Logic Components
+        self._init_logic()
+        
+        # --- UI Layout ---
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        
+        # 1. Main Chat Area
+        self.chat_frame = ctk.CTkFrame(self, corner_radius=0)
+        self.chat_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.chat_frame.grid_columnconfigure(0, weight=1)
+        self.chat_frame.grid_rowconfigure(0, weight=1)
+        self.chat_frame.grid_columnconfigure(0, weight=1)
+        self.chat_frame.grid_rowconfigure(0, weight=1)
+
+        # Chat Display (Scrollable)
+        self.chat_display = ctk.CTkTextbox(self.chat_frame, state="disabled", wrap="word")
+        self.chat_display.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+        # Input Area
+        self.input_frame = ctk.CTkFrame(self.chat_frame, fg_color="transparent")
+        self.input_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
+        self.input_frame.grid_columnconfigure(1, weight=1)
+
+        self.user_input = ctk.CTkTextbox(self.input_frame, height=100, wrap="word")
+        self.user_input.grid(row=0, column=0, sticky="ew", padx=0)
+        self.user_input.bind("<Control-Return>", lambda e: self.send_message())
+
+        self.send_button = ctk.CTkButton(self.input_frame, text="Send", width=100, command=self.send_message)
+        self.send_button.grid(row=0, column=1, padx=(10, 0), sticky="sw")
+
+        # Status Bar
+        self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", padx=10)
+        self.status_bar.grid(row=1, column=0, columnspan=2, sticky="ew")
+
+    def _init_logic(self):
+        """Initialize the AI backend components."""
+        workspace_dir = os.getenv("WORKSPACE_DIR", "./workspace")
+        
+        self.openai_client = OpenAI(
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            api_key=os.getenv("OPENAI_API_KEY", "lm-studio")
+        )
+
+        from handlers import SecureFileSystemHandler, SafeScriptExecutor
+        self.fs_handler = SecureFileSystemHandler(workspace_dir)
+        self.executor = SafeScriptExecutor(workspace_dir)
+
+        self.ai_client = AIClient(
+            openai_client=self.openai_client,
+            fs_handler=self.fs_handler,
+            code_executor=self.executor,
+            system_prompt=os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
+        )
+
+    def clear_chat(self):
+        """Clears the chat UI and resets AI client history."""
+        self.chat_display.configure(state="normal")
+        self.chat_display.delete("1.0", "end")
+        self.chat_display.configure(state="disabled")
+        
+        system_prompt = os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
+        self.ai_client.messages = [{"role": "system", "content": system_prompt}]
+        
+        self.update_status("Chat reset")
+
+    def update_status(self, text: str):
+        self.status_bar.configure(text=text)
+
+    def update_textbox(self, textbox: ctk.CTkTextbox, text: str):
+        textbox.configure(state="normal")
+        textbox.delete("1.0", "end")
+        textbox.insert("1.0", text)
+        textbox.configure(state="disabled")
+
+    def append_chat(self, role: str, message: str):
+        """Appends a full message to the chat display."""
+        self.chat_display.configure(state="normal")
+        prefix = "User: " if role == "user" else "AI: "
+        if role == "system": prefix = "System: "
+        self.chat_display.insert("end", f"{prefix}{message}\n\n")
+        self.chat_display.configure(state="disabled")
+        self.chat_display.see("end")
+
+    def append_token(self, token: str):
+        """Appends a single token to the last AI message."""
+        self.chat_display.configure(state="normal")
+        self.chat_display.insert("end", token)
+        self.chat_display.configure(state="disabled")
+        self.chat_display.see("end")
+
+    def send_message(self):
+        user_text = self.user_input.get("1.0", "end-1c").strip()
+        if not user_text:
+            return
+        
+        self.user_input.delete("1.0", "end")
+        self.append_chat("user", user_text)
+        threading.Thread(target=self._process_ai_response, args=(user_text,), daemon=True).start()
+
+    def _process_ai_response(self, text: str):
+        try:
+            # Standard response logic
+            self.update_status("AI is thinking...")
+            
+            self.after(0, lambda: self.append_chat("AI: ", "")) 
+            
+            full_response = ""
+            for token in self.ai_client.chat_stream(text):
+                full_response += token
+                self.after(0, lambda t=token: self.append_token(t))
+
+            self.after(0, lambda: self.append_chat("system", "\n")) 
+            
+            self.after(0, lambda: self.update_status("Ready"))
+        except Exception as e:
+            logger.error(f"Chat error: {e}")
+            self.after(0, lambda: self.append_chat("system", f"Error: {str(e)}"))
+            self.after(0, lambda: self.update_status("Error occurred"))
+
+if __name__ == "__main__":
+    app = ConsoleEditorGUI()
+    app.mainloop()
