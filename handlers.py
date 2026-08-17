@@ -22,14 +22,21 @@ class ExecutionResult:
     message: str
 
 
-class IFileSystemHandler(ABC):
-    """Interface for file system operations to ensure Liskov Substitution Principle."""
+class IFileSystemReader(ABC):
+    """Interface for file system read operations."""
 
     @abstractmethod
     def read_file(self, path: str) -> str: ...
 
     @abstractmethod
     def list_directory(self, path: str) -> str: ...
+
+    @abstractmethod
+    def search_files(self, directory_path: str, pattern: str) -> str: ...
+
+
+class IFileSystemWriter(ABC):
+    """Interface for file system write operations."""
 
     @abstractmethod
     def create_file(self, path: str, content: str) -> str: ...
@@ -49,8 +56,16 @@ class IFileSystemHandler(ABC):
     @abstractmethod
     def edit_file(self, path: str, content: str) -> str: ...
 
+
+class IFileSystemHandler(IFileSystemReader, IFileSystemWriter, ABC):
+    """Unified interface for file system operations."""
+    pass
+
+
+class IScriptExecutor(ABC):
+    """Interface for script execution."""
     @abstractmethod
-    def search_files(self, directory_path: str, pattern: str) -> str: ...
+    def execute(self, script_path: str, input_data: Optional[str] = None, timeout: int = 30) -> ExecutionResult: ...
 
 
 class SecureFileSystemHandler(IFileSystemHandler):
@@ -157,7 +172,7 @@ class SecureFileSystemHandler(IFileSystemHandler):
             return f"Error during search: {e}"
 
 
-class SafeScriptExecutor:
+class SafeScriptExecutor(IScriptExecutor):
     """
     Executes Python scripts in a controlled environment.
     Ensures scripts are run within the workspace boundaries.

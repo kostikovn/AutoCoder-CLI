@@ -7,9 +7,8 @@ Implements an asynchronous chat interface with a semantic context side-panel.
 import os
 import sys
 import threading
-import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Optional
 
 # --- PATH CONFIGURATION ---
 current_dir = Path(__file__).parent.absolute()
@@ -23,26 +22,80 @@ except ImportError:
     exit(1)
 
 from loguru import logger
-from openai import OpenAI
 from dotenv import load_dotenv
 
-from ai_client import AIClient 
-from dotenv import load_dotenv
+from ai_client import AIClient, OpenAIClientAdapter, ToolManager, ToolRegistry, ContextPluginManager
+from handlers import SecureFileSystemHandler, SafeScriptExecutor
+from core import ClientConfig, ToolContext
 
 load_dotenv(current_dir / "settings.env")
 
+def create_ai_client() -> AIClient:
+    """
+    Bootstrap function to wire up dependencies.
+    Satisfies Dependency Inversion by constructing the graph here.
+    """
+    workspace_dir = os.getenv("WORKSPACE_DIR", "./workspace")
+    
+    # 1. Configuration
+    config = ClientConfig(
+        model=os.getenv("MODEL", "local-model"),
+        temperature=float(os.getenv("TEMPERATURE", 0.6)),
+        max_tokens=int(os.getenv("MAX_TOKENS", 262144)),
+        system_prompt=os.getenv("SYSTEM_PROMPT", "You are a helpful assistant."),
+        max_iterations=int(os.getenv("MAX_ITERATIONS", 200))
+    )
+    
+    # 2. LLM Client
+    llm_client = OpenAIClientAdapter(
+        api_key=os.getenv("OPENAI_API_KEY", "lm-studio"),
+        base_url=os.getenv("OPENAI_BASE_URL")
+    )
+    
+    # 3. Handlers
+    fs_handler = SecureFileSystemHandler(workspace_dir)
+    executor = SafeScriptExecutor(workspace_dir)
+    
+    # 4. Tool Context & Manager
+    tool_context = ToolContext(
+        fs_handler=fs_handler,
+        executor=executor
+    )
+    tool_manager = ToolManager(context=tool_context)
+    tool_manager.load_plugins("plugin/tools")
+
+    # 5. Context Plugin Manager
+    context_manager = ContextPluginManager()
+    context_manager.load_plugins("plugin/context")
+
+    # 6. AI Client
+    return AIClient(
+        llm_client=llm_client,
+        tool_manager=tool_manager,
+        context_manager=context_manager,
+        config=config
+    )
+
+
+
+
+    # 4. AI Client
+    return AIClient(
+        llm_client=llm_client,
+        tool_manager=tool_manager,
+        system_prompt=os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
+    )
+
 class ConsoleEditorGUI(ctk.CTk):
-    def __init__(self):
+    def __init__(self, ai_client: AIClient):
         super().__init__()
+        self.ai_client = ai_client
 
         # --- Configuration ---
         self.title("AI Console Editor - Semantic GUI")
         self.geometry("1200x800")
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
-
-        # Initialize Logic Components
-        self._init_logic()
         
         # --- UI Layout ---
         self.grid_columnconfigure(1, weight=1)
@@ -51,8 +104,6 @@ class ConsoleEditorGUI(ctk.CTk):
         # 1. Main Chat Area
         self.chat_frame = ctk.CTkFrame(self, corner_radius=0)
         self.chat_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        self.chat_frame.grid_columnconfigure(0, weight=1)
-        self.chat_frame.grid_rowconfigure(0, weight=1)
         self.chat_frame.grid_columnconfigure(0, weight=1)
         self.chat_frame.grid_rowconfigure(0, weight=1)
 
@@ -75,26 +126,6 @@ class ConsoleEditorGUI(ctk.CTk):
         # Status Bar
         self.status_bar = ctk.CTkLabel(self, text="Ready", anchor="w", padx=10)
         self.status_bar.grid(row=1, column=0, columnspan=2, sticky="ew")
-
-    def _init_logic(self):
-        """Initialize the AI backend components."""
-        workspace_dir = os.getenv("WORKSPACE_DIR", "./workspace")
-        
-        self.openai_client = OpenAI(
-            base_url=os.getenv("OPENAI_BASE_URL"),
-            api_key=os.getenv("OPENAI_API_KEY", "lm-studio")
-        )
-
-        from handlers import SecureFileSystemHandler, SafeScriptExecutor
-        self.fs_handler = SecureFileSystemHandler(workspace_dir)
-        self.executor = SafeScriptExecutor(workspace_dir)
-
-        self.ai_client = AIClient(
-            openai_client=self.openai_client,
-            fs_handler=self.fs_handler,
-            code_executor=self.executor,
-            system_prompt=os.getenv("SYSTEM_PROMPT", "You are a helpful assistant.")
-        )
 
     def clear_chat(self):
         """Clears the chat UI and resets AI client history."""
@@ -143,9 +174,7 @@ class ConsoleEditorGUI(ctk.CTk):
 
     def _process_ai_response(self, text: str):
         try:
-            # Standard response logic
             self.update_status("AI is thinking...")
-            
             self.after(0, lambda: self.append_chat("AI: ", "")) 
             
             full_response = ""
@@ -154,7 +183,6 @@ class ConsoleEditorGUI(ctk.CTk):
                 self.after(0, lambda t=token: self.append_token(t))
 
             self.after(0, lambda: self.append_chat("system", "\n")) 
-            
             self.after(0, lambda: self.update_status("Ready"))
         except Exception as e:
             logger.error(f"Chat error: {e}")
@@ -162,5 +190,6 @@ class ConsoleEditorGUI(ctk.CTk):
             self.after(0, lambda: self.update_status("Error occurred"))
 
 if __name__ == "__main__":
-    app = ConsoleEditorGUI()
+    ai_client = create_ai_client()
+    app = ConsoleEditorGUI(ai_client)
     app.mainloop()
