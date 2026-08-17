@@ -3,7 +3,7 @@ from datetime import datetime
 
 class DateTimeContextPlugin(IContextPlugin):
     """Adds current date and time to the system prompt."""
-    def pre_process(self, messages, config):
+    def pre_process(self, messages, config, llm_client=None):
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # Inject into the system message
         if messages and messages[0]["role"] == "system":

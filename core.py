@@ -15,6 +15,9 @@ class ClientConfig:
     max_tokens: int = 262144
     system_prompt: str = "You are a helpful assistant."
     max_iterations: int = 200
+    max_context_tokens: int = 8192
+    summary_threshold: float = 0.7
+
 
 @dataclass
 class ToolContext:
@@ -26,7 +29,7 @@ class ToolContext:
 @runtime_checkable
 class IContextPlugin(Protocol):
     """Interface for context plugins to modify conversation history."""
-    def pre_process(self, messages: List[Dict[str, Any]], config: ClientConfig) -> List[Dict[str, Any]]:
+    def pre_process(self, messages: List[Dict[str, Any]], config: ClientConfig, llm_client: Optional['ILLMClient'] = None) -> List[Dict[str, Any]]:
         """Modify messages before sending to LLM."""
         ...
 

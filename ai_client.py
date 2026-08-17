@@ -139,11 +139,12 @@ class ContextPluginManager:
             except Exception as e:
                 logger.error(f"Failed to load context plugin {file.name}: {e}")
 
-    def apply_pre_process(self, messages: List[Dict[str, Any]], config: ClientConfig) -> List[Dict[str, Any]]:
+    def apply_pre_process(self, messages: List[Dict[str, Any]], config: ClientConfig, llm_client: Optional[Any] = None) -> List[Dict[str, Any]]:
         processed_messages = list(messages)
         for plugin in self.plugins:
-            processed_messages = plugin.pre_process(processed_messages, config)
+            processed_messages = plugin.pre_process(processed_messages, config, llm_client)
         return processed_messages
+
 
     def apply_post_process(self, response: Any, messages: List[Dict[str, Any]], config: ClientConfig) -> Any:
         processed_response = response
@@ -224,7 +225,7 @@ class AIClient:
             self._log(f"[Iteration {i+1}] Sending request to LLM...")
             try:
                 # Apply pre-processing context plugins
-                current_messages = self.context_manager.apply_pre_process(self.messages, self.config)
+                current_messages = self.context_manager.apply_pre_process(self.messages, self.config, self.llm_client)
                 
                 response = self.llm_client.create_completion(
                     messages=current_messages,
@@ -234,6 +235,7 @@ class AIClient:
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens
                 )
+
                 
                 # Apply post-processing context plugins
                 response = self.context_manager.apply_post_process(response, self.messages, self.config)
