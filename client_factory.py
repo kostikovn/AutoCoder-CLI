@@ -10,7 +10,7 @@ from ai_client import AIClient, OpenAIClientAdapter, ToolManager, ToolContext, C
 from handlers import SecureFileSystemHandler, SafeScriptExecutor
 from core import ClientConfig
 
-def get_remote_context_size(base_url: Optional[str]) -> Optional[int]:
+def get_remote_context_size(base_url: Optional[str], api_key: Optional[str] = None) -> Optional[int]:
     """Fetches the max context size from the llama-server /slots endpoint."""
     if not base_url:
         return None
@@ -19,13 +19,22 @@ def get_remote_context_size(base_url: Optional[str]) -> Optional[int]:
         if not url.endswith("/"):
             url += "/"
         
-        response = requests.get(f"{url}slots", timeout=2)
+        request_url = f"{url}slots"
+        logger.info(f"Fetching context size from: {request_url}")
+        
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        
+        response = requests.get(request_url, headers=headers, timeout=2)
         if response.status_code == 200:
             slots = response.json()
             if slots and isinstance(slots, list):
                 return slots[0].get("n_ctx")
+        else:
+            logger.info(f"Server returned non-200 status for /slots: {response.status_code}")
     except Exception as e:
-        logger.warning(f"Could not fetch remote context size: {e}")
+        logger.warning(f"Could not fetch remote context size from {base_url}: {e}")
     return None
 
 def create_ai_client() -> AIClient:
@@ -37,7 +46,8 @@ def create_ai_client() -> AIClient:
     
     workspace_dir = os.getenv("WORKSPACE_DIR", "./workspace")
     base_url = os.getenv("OPENAI_BASE_URL")
-    remote_ctx = get_remote_context_size(base_url)
+    api_key = os.getenv("OPENAI_API_KEY", "lm-studio")
+    remote_ctx = get_remote_context_size(base_url, api_key)
     
     if remote_ctx:
         logger.info(f"Dynamic context window detected: {remote_ctx} tokens")

@@ -153,7 +153,29 @@ class ContextPluginManager:
         processed_messages = list(messages)
         for plugin in self.plugins:
             processed_messages = plugin.pre_process(processed_messages, config, llm_client)
-        return processed_messages
+        
+        # Consolidate all system messages into a single one at the beginning
+        # This prevents errors in strict models (like Qwen/Llama-3) that require 
+        # exactly one system message at the start.
+        system_contents = []
+        non_system_messages = []
+        
+        for msg in processed_messages:
+            if msg.get("role") == "system":
+                system_contents.append(msg.get("content", ""))
+            else:
+                non_system_messages.append(msg)
+        
+        if not system_contents:
+            # Fallback to ensure a system message always exists
+            system_contents.append(config.system_prompt)
+            
+        consolidated_system_msg = {
+            "role": "system", 
+            "content": "\\n\\n".join(system_contents)
+        }
+        
+        return [consolidated_system_msg] + non_system_messages
 
 
     def apply_post_process(self, response: Any, messages: List[Dict[str, Any]], config: ClientConfig) -> Any:
