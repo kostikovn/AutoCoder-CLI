@@ -23,7 +23,6 @@ AutoCoder-CLI provides a suite of tools that allow an AI agent to interact with 
 
 ### Prerequisites
 - Python 3.10+
-- Windows OS (recommended for `.bat` installer)
 
 ### Setup
 1. Clone the repository:
@@ -32,8 +31,15 @@ AutoCoder-CLI provides a suite of tools that allow an AI agent to interact with 
    cd AutoCoder-CLI
    ```
 2. Run the installation script to install dependencies and the Chromium browser:
+
+   **Windows:**
    ```bash
    .\install.bat
+   ```
+   **macOS / Linux:**
+   ```bash
+   chmod +x install.sh
+   ./install.sh
    ```
 
 ## 📖 Usage
