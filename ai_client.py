@@ -123,10 +123,11 @@ class ContextPluginManager:
             return
 
         for file in path.glob("*.py"):
-            if file.name == "__init__.py":
+            if file.name.startswith("_") or file.name == "__init__.py":
                 continue
             try:
                 spec = importlib.util.spec_from_file_location(file.stem, file)
+
                 module = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(module)
                 
@@ -134,10 +135,19 @@ class ContextPluginManager:
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, type) and issubclass(attr, IContextPlugin) and attr is not IContextPlugin:
-                        self.plugins.append(attr())
-                        logger.debug(f"Context plugin loaded: {attr_name} from {file.name}")
+                        try:
+                            # Try to instantiate the plugin. 
+                            # If it fails due to missing args, we skip it here 
+                            # because complex plugins should be added manually in bootstrap.
+                            plugin_instance = attr()
+                            self.plugins.append(plugin_instance)
+                            logger.debug(f"Context plugin loaded: {attr_name} from {file.name}")
+                        except TypeError as e:
+                            logger.warning(f"Could not auto-load plugin {attr_name} from {file.name}: {e}. "
+                                           f"This plugin likely requires manual initialization in bootstrap.")
             except Exception as e:
                 logger.error(f"Failed to load context plugin {file.name}: {e}")
+
 
     def apply_pre_process(self, messages: List[Dict[str, Any]], config: ClientConfig, llm_client: Optional[Any] = None) -> List[Dict[str, Any]]:
         processed_messages = list(messages)
