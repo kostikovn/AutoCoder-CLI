@@ -10,6 +10,7 @@ AutoCoder-CLI provides a suite of tools that allow an AI agent to interact with 
 - **Read & Write**: Full CRUD operations for files and directories (`read_file`, `create_file`, `edit_file`, `delete_file`).
 - **Organization**: Create directories, rename items, and manage folder structures (`create_directory`, `rename_item`, `delete_directory`).
 - **Discovery**: List directory contents and perform recursive pattern searches across the codebase (`list_directory`, `search_file`).
+- **🛡 Security**: To ensure safety, the agent has access **only** to files and directories located within the path specified in `WORKSPACE_DIR` (defined in `settings.env`). All operations outside this directory are blocked.
 
 ### 🌐 Advanced Web Browsing
 - **Headless Browser**: A full-featured browser based on Chromium that renders JavaScript, bypassing static HTML placeholders.
