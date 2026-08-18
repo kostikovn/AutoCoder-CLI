@@ -44,12 +44,19 @@ AutoCoder-CLI provides a suite of tools that allow an AI agent to interact with 
 
 ## 📖 Usage
 
-Start the application to begin interacting with the AI agent. The agent will automatically use the registered tools to perform tasks based on your requests.
+You can run the application in two modes:
 
+### 💻 Terminal Mode (CLI)
+For a lightweight, text-only experience:
 ```bash
 python main.py
 ```
-*(Replace `main.py` with the actual entry point of the application)*
+
+### 🎨 GUI Mode
+For a modern interface with a semantic context panel:
+```bash
+python gui_app.py
+```
 
 ## 📜 License
 
